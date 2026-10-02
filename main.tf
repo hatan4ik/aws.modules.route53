@@ -20,7 +20,8 @@ resource "aws_route53_zone" "this" {
     }
   }
 
-  tags = merge(var.tags, { Name = var.zone.name })
+  # The module's Name only fills a gap: caller tags are merged last and win.
+  tags = merge({ Name = var.zone.name }, var.tags)
 
   lifecycle {
     # The inline vpc block and aws_route53_zone_association manage the same

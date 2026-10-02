@@ -52,6 +52,29 @@ run "creates_endpoint_health_checks" {
   }
 }
 
+run "never_overrides_a_caller_supplied_name_tag" {
+  command = plan
+
+  variables {
+    tags = { Name = "module-name", Environment = "test" }
+
+    health_checks = {
+      default = { type = "HTTP", fqdn = "app.example.com" }
+      tagged  = { type = "HTTP", fqdn = "app.example.com", tags = { Name = "per-check-name" } }
+    }
+  }
+
+  assert {
+    condition     = aws_route53_health_check.this["default"].tags["Name"] == "module-name" && aws_route53_health_check.this["default"].tags["Environment"] == "test"
+    error_message = "A Name in module-level tags must win over the module's default Name = <key>."
+  }
+
+  assert {
+    condition     = aws_route53_health_check.this["tagged"].tags["Name"] == "per-check-name"
+    error_message = "A per-check Name must win over module-level tags and the default Name."
+  }
+}
+
 run "creates_calculated_cloudwatch_and_recovery_control_checks" {
   command = plan
 
@@ -323,6 +346,48 @@ run "rejects_malformed_routing_control_arn" {
 
   variables {
     health_checks = { bad = { type = "RECOVERY_CONTROL", routing_control_arn = "routing-control" } }
+  }
+
+  expect_failures = [var.health_checks]
+}
+
+# request_interval, failure_threshold, and measure_latency apply to endpoint
+# checks only; on other types they are rejected rather than silently dropped.
+run "rejects_request_interval_on_calculated_check" {
+  command = plan
+
+  variables {
+    health_checks = { bad = { type = "CALCULATED", child_healthchecks = ["0123abcd-4567-89ef-0123-456789abcdef"], child_health_threshold = 1, request_interval = 30 } }
+  }
+
+  expect_failures = [var.health_checks]
+}
+
+run "rejects_failure_threshold_on_cloudwatch_check" {
+  command = plan
+
+  variables {
+    health_checks = { bad = { type = "CLOUDWATCH_METRIC", cloudwatch_alarm_name = "orders-5xx", cloudwatch_alarm_region = "us-east-1", failure_threshold = 3 } }
+  }
+
+  expect_failures = [var.health_checks]
+}
+
+run "rejects_measure_latency_on_recovery_control_check" {
+  command = plan
+
+  variables {
+    health_checks = { bad = { type = "RECOVERY_CONTROL", routing_control_arn = "arn:aws:route53-recovery-control::123456789012:controlpanel/0123456789abcdef0123456789abcdef/routingcontrol/abcdef1234567890", measure_latency = false } }
+  }
+
+  expect_failures = [var.health_checks]
+}
+
+run "rejects_unsupported_request_interval_on_non_endpoint_check" {
+  command = plan
+
+  variables {
+    health_checks = { bad = { type = "CALCULATED", child_healthchecks = ["0123abcd-4567-89ef-0123-456789abcdef"], child_health_threshold = 1, request_interval = 20 } }
   }
 
   expect_failures = [var.health_checks]

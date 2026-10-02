@@ -82,6 +82,24 @@ run "creates_a_public_zone" {
   expect_failures = [check.zone_created_without_dnssec]
 }
 
+run "never_overrides_a_caller_supplied_name_tag" {
+  command = plan
+
+  variables {
+    zone = { name = "example.com" }
+    tags = { Name = "caller-name", Owner = "platform" }
+  }
+
+  # Root tags reach health checks unchanged; modules/health-checks/tests pins
+  # the same precedence for health check tags.
+  assert {
+    condition     = aws_route53_zone.this[0].tags["Name"] == "caller-name" && aws_route53_zone.this[0].tags["Owner"] == "platform"
+    error_message = "A caller-supplied Name tag must win over the module's default Name on the zone."
+  }
+
+  expect_failures = [check.zone_created_without_dnssec]
+}
+
 run "creates_a_public_zone_with_a_reusable_delegation_set" {
   command = plan
 

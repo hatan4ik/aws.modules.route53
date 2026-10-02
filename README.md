@@ -18,7 +18,7 @@ What you get without setting anything:
 
 ```hcl
 module "example_com" {
-  source = "git::https://github.com/hatan4ik/aws.modules.route53.git?ref=<commit-sha>" # v1.0.0
+  source = "git::https://github.com/hatan4ik/aws.modules.route53.git?ref=<commit-sha>" # v1.0.1
 
   zone = { name = "example.com" }
 
@@ -75,7 +75,7 @@ Zone
 
 - `force_destroy = false`: destroying the module fails while the zone still holds record sets you did not declare. Turn it on only for disposable zones; the `force_destroy_enabled` check warns while it is set.
 - A private zone is created with its VPC and stays private. `delegation_set_id` is rejected on a private zone, and DNSSEC and query logging are refused on a zone the module created as private because Route 53 supports them on public zones only. An existing zone is not inspected, so those two features are your responsibility to apply to a public zone.
-- The module adds only a `Name` tag and never overrides caller tags.
+- The module adds only a `Name` tag (the zone name on the zone, the key on each health check), and only when `tags` does not already set `Name`; it never overrides caller tags. A `Name` in `tags` therefore names the zone and every health check alike; give a health check its own name through its per-check `tags`.
 
 Records
 
@@ -100,10 +100,38 @@ Not created here
 
 - Exactly one of `zone_id` or `zone` must be set; the precondition on output `zone_id` names the rule. Switching from one to the other is a replacement of everything below the zone, so choose at the start.
 - The creation VPC of a private zone is fixed. The zone ignores changes to its `vpc` block after creation (the AWS provider's documented pattern for mixing the inline block with `aws_route53_zone_association`), so to move a zone to a new VPC, associate the new VPC as an additional one first and replace the zone in a separate change.
-- Health checks are created before records, and a record that references a check by key waits for it. Removing a check that a record still references fails at plan time.
+- Health checks are created before records, and a record that references a check by key waits for it. Removing a check that a record still references by key fails at plan time.
+- Records can reference health checks by key, but a `CALCULATED` check's `child_healthchecks` takes health check **IDs** only. A calculated check over sibling checks declared in the same call is therefore not possible: every check is an instance of the one `aws_route53_health_check` resource inside `modules/health-checks`, and resolving a key would make that resource reference its own instances, a cycle Terraform rejects. Declare the child checks in one module call and pass its `health_check_ids` output to the calculated check in a second call.
 - Disable DNSSEC before destroying a signed zone: remove `dnssec`, apply (signing is disabled and the key-signing key deactivated and deleted), then remove the zone. Route 53 refuses to delete a signed zone. Removing the DS record from the parent zone first avoids validation failures for resolvers during the change.
 - Two `check` blocks warn on every plan and apply but never block: `force_destroy_enabled` and `zone_created_without_dnssec`.
 - Record keys are stable identifiers: renaming a key replaces that record set only. Changing `name`, `type`, or `set_identifier` replaces the record set; changing values, TTL, weight, or health check updates it in place.
+
+## Quotas
+
+Route 53 quotas the module does not check at plan time, so exceeding one fails at apply. Defaults per account unless stated; all can be raised through Service Quotas or AWS Support. See [Route 53 quotas](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/DNSLimitations.html) for current values.
+
+| Quota | Default | Counts against it |
+| --- | --- | --- |
+| Hosted zones per account | 500 | Every module call with `zone` set, plus zones created elsewhere. |
+| Records per hosted zone | 10,000 | Every record (each value of a record set) in the zone, whoever created it. |
+| Health checks per account | 200 | Every entry of `health_checks` across all module calls, plus checks created elsewhere. |
+| VPCs associated with one private hosted zone | 300 | `zone.private.vpc_id` plus every `zone.private.additional_vpcs` entry. |
+
+## Failure modes
+
+- A health check's target disappears. If the `fqdn` stops resolving, the load balancer behind it is deleted, or the IP stops answering, the check goes unhealthy and routing fails over; when every record in a weighted, latency, or similar group is unhealthy, Route 53 answers as if all were healthy. Nothing in Terraform notices; the check keeps probing a target that no longer exists.
+- A `CLOUDWATCH_METRIC` check's alarm is deleted. Route 53 can no longer read the alarm state and reports the check according to `insufficient_data_health_status`. With `LastKnownStatus` (the AWS default when unset) the check can stay `Healthy` indefinitely; set `Unhealthy` when a missing alarm must fail closed.
+- A health check referenced by `health_check_id` is deleted outside this module. Route 53 allows deleting a health check that records still reference; AWS documents that the status of such a record's health check is then unpredictable. A `health_check` key referencing a check in the same call cannot dangle this way, because removing the check while a record still names it fails the plan.
+- DNSSEC loses its key. If the KMS key behind the key-signing key is disabled, scheduled for deletion, or loses the `dnssec-route53.amazonaws.com` grants, Route 53 cannot re-sign the zone; once existing signatures expire, validating resolvers return `SERVFAIL` for the whole zone. Route 53 reports this through the `AWS/Route53` CloudWatch metrics `DNSSECInternalFailure` and `DNSSECKeySigningKeysNeedingAction` (dimension `HostedZoneId`, published in `us-east-1`). The module creates no alarms; alarm on both metrics being greater than 0 for every signed zone.
+
+## Cost
+
+The module itself adds nothing beyond the resources it declares, but some of them carry an ongoing charge (see [Route 53 pricing](https://aws.amazon.com/route53/pricing/) and [KMS pricing](https://aws.amazon.com/kms/pricing/)):
+
+- Hosted zones are billed per zone per month, and queries per million (alias queries to AWS resources are free).
+- Health checks are billed per check per month, more for endpoints outside AWS, and each optional feature adds to that per check: HTTPS, string matching (`*_STR_MATCH`), the fast 10-second `request_interval`, and `measure_latency`. A check using all four costs several times a basic one, and the charge recurs monthly for every entry of `health_checks` until it is removed.
+- DNSSEC requires a customer managed KMS key, billed per key per month plus the `kms:Sign` requests Route 53 makes, for as long as signing is enabled. Query logging is billed as CloudWatch Logs ingestion and storage in the caller's log group.
+- The integration suites create billable resources in your account; see [tests/integration/README.md](tests/integration/README.md).
 
 ## Testing
 
@@ -136,11 +164,11 @@ Pin the full commit SHA of the release tag and record the tag in a comment, so t
 
 ```hcl
 module "example_com" {
-  source = "git::https://github.com/hatan4ik/aws.modules.route53.git?ref=<commit-sha>" # v1.0.0
+  source = "git::https://github.com/hatan4ik/aws.modules.route53.git?ref=<commit-sha>" # v1.0.1
 }
 
 module "records" {
-  source = "git::https://github.com/hatan4ik/aws.modules.route53.git//modules/records?ref=<commit-sha>" # v1.0.0
+  source = "git::https://github.com/hatan4ik/aws.modules.route53.git//modules/records?ref=<commit-sha>" # v1.0.1
 }
 ```
 
@@ -202,10 +230,10 @@ Apache-2.0. See [LICENSE](LICENSE).
 |------|-------------|------|---------|:--------:|
 | <a name="input_default_ttl"></a> [default\_ttl](#input\_default\_ttl) | TTL in seconds applied to non-alias records that declare no ttl. | `number` | `300` | no |
 | <a name="input_dnssec"></a> [dnssec](#input\_dnssec) | Enable DNSSEC signing with a key-signing key backed by kms\_key\_arn: an asymmetric ECC\_NIST\_P256 SIGN\_VERIFY customer managed key in us-east-1 whose key policy grants dnssec-route53.amazonaws.com kms:DescribeKey, kms:GetPublicKey, kms:Sign, and kms:CreateGrant. Publish output dnssec\_key\_signing\_key.ds\_record in the parent zone afterwards. Public zones only. | <pre>object({<br/>    kms_key_arn          = string<br/>    key_signing_key_name = optional(string, "ksk")<br/>  })</pre> | `null` | no |
-| <a name="input_health_checks"></a> [health\_checks](#input\_health\_checks) | Health checks keyed by a stable identifier; see modules/health-checks for the per-type rules. Records reference them by key through health\_check. | <pre>map(object({<br/>    type                            = string<br/>    fqdn                            = optional(string)<br/>    ip_address                      = optional(string)<br/>    port                            = optional(number)<br/>    resource_path                   = optional(string)<br/>    search_string                   = optional(string)<br/>    request_interval                = optional(number, 30)<br/>    failure_threshold               = optional(number, 3)<br/>    measure_latency                 = optional(bool, false)<br/>    invert_healthcheck              = optional(bool, false)<br/>    disabled                        = optional(bool, false)<br/>    enable_sni                      = optional(bool)<br/>    regions                         = optional(set(string))<br/>    child_healthchecks              = optional(set(string))<br/>    child_health_threshold          = optional(number)<br/>    cloudwatch_alarm_name           = optional(string)<br/>    cloudwatch_alarm_region         = optional(string)<br/>    insufficient_data_health_status = optional(string)<br/>    routing_control_arn             = optional(string)<br/>    tags                            = optional(map(string), {})<br/>  }))</pre> | `{}` | no |
+| <a name="input_health_checks"></a> [health\_checks](#input\_health\_checks) | Health checks keyed by a stable identifier; see modules/health-checks for the per-type rules (attributes that do not apply to a type, including request\_interval, failure\_threshold, and measure\_latency on non-endpoint checks, are rejected). Records reference them by key through health\_check. child\_healthchecks takes health check IDs, not keys, so a CALCULATED check cannot aggregate checks created in the same call. | <pre>map(object({<br/>    type                            = string<br/>    fqdn                            = optional(string)<br/>    ip_address                      = optional(string)<br/>    port                            = optional(number)<br/>    resource_path                   = optional(string)<br/>    search_string                   = optional(string)<br/>    request_interval                = optional(number)<br/>    failure_threshold               = optional(number)<br/>    measure_latency                 = optional(bool)<br/>    invert_healthcheck              = optional(bool, false)<br/>    disabled                        = optional(bool, false)<br/>    enable_sni                      = optional(bool)<br/>    regions                         = optional(set(string))<br/>    child_healthchecks              = optional(set(string))<br/>    child_health_threshold          = optional(number)<br/>    cloudwatch_alarm_name           = optional(string)<br/>    cloudwatch_alarm_region         = optional(string)<br/>    insufficient_data_health_status = optional(string)<br/>    routing_control_arn             = optional(string)<br/>    tags                            = optional(map(string), {})<br/>  }))</pre> | `{}` | no |
 | <a name="input_query_logging"></a> [query\_logging](#input\_query\_logging) | Send DNS query logs to an existing CloudWatch log group in us-east-1 whose resource policy lets route53.amazonaws.com call logs:CreateLogStream and logs:PutLogEvents. The module does not create the log group. Public zones only. | <pre>object({<br/>    cloudwatch_log_group_arn = string<br/>  })</pre> | `null` | no |
 | <a name="input_records"></a> [records](#input\_records) | Record sets keyed by a stable identifier; see modules/records for the routing rules. health\_check names a key of health\_checks and is resolved to its ID; health\_check\_id references a check created elsewhere. Either requires a routing policy. | <pre>map(object({<br/>    name    = string<br/>    type    = string<br/>    ttl     = optional(number)<br/>    records = optional(set(string))<br/>    alias = optional(object({<br/>      name                   = string<br/>      zone_id                = string<br/>      evaluate_target_health = optional(bool, false)<br/>    }))<br/>    set_identifier  = optional(string)<br/>    health_check    = optional(string)<br/>    health_check_id = optional(string)<br/>    weighted = optional(object({<br/>      weight = number<br/>    }))<br/>    latency = optional(object({<br/>      region = string<br/>    }))<br/>    failover = optional(object({<br/>      type = string<br/>    }))<br/>    geolocation = optional(object({<br/>      continent   = optional(string)<br/>      country     = optional(string)<br/>      subdivision = optional(string)<br/>    }))<br/>    geoproximity = optional(object({<br/>      aws_region       = optional(string)<br/>      local_zone_group = optional(string)<br/>      bias             = optional(number)<br/>      coordinates = optional(object({<br/>        latitude  = string<br/>        longitude = string<br/>      }))<br/>    }))<br/>    cidr = optional(object({<br/>      collection_id = string<br/>      location_name = string<br/>    }))<br/>    multivalue_answer = optional(bool, false)<br/>    allow_overwrite   = optional(bool, false)<br/>  }))</pre> | `{}` | no |
-| <a name="input_tags"></a> [tags](#input\_tags) | Tags applied to the hosted zone and every health check. The module adds a Name tag and never overrides caller tags. | `map(string)` | `{}` | no |
+| <a name="input_tags"></a> [tags](#input\_tags) | Tags applied to the hosted zone and every health check. The module adds a Name tag (the zone name, or the health check key) only when these tags do not set one; it never overrides caller tags. A Name set here therefore names the zone and every health check alike. | `map(string)` | `{}` | no |
 | <a name="input_zone"></a> [zone](#input\_zone) | Hosted zone to create. Public unless private is set; private.vpc\_id is the VPC the zone is created in and private.additional\_vpcs (keyed by VPC ID, each with an optional region) become standalone associations. force\_destroy deletes record sets on destroy. delegation\_set\_id applies to public zones only. Exactly one of zone\_id or zone must be set. | <pre>object({<br/>    name              = string<br/>    comment           = optional(string)<br/>    force_destroy     = optional(bool, false)<br/>    delegation_set_id = optional(string)<br/>    private = optional(object({<br/>      vpc_id     = string<br/>      vpc_region = optional(string)<br/>      additional_vpcs = optional(map(object({<br/>        region = optional(string)<br/>      })), {})<br/>    }))<br/>  })</pre> | `null` | no |
 | <a name="input_zone_id"></a> [zone\_id](#input\_zone\_id) | ID of an existing hosted zone to manage records, health checks, DNSSEC, and query logging in. Exactly one of zone\_id or zone must be set. | `string` | `null` | no |
 

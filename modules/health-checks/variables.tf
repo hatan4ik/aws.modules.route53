@@ -1,5 +1,5 @@
 variable "health_checks" {
-  description = "Health checks keyed by a stable identifier. type selects the shape: HTTP, HTTPS, HTTP_STR_MATCH, HTTPS_STR_MATCH, and TCP probe an endpoint (fqdn or ip_address); CALCULATED aggregates child_healthchecks; CLOUDWATCH_METRIC follows an alarm; RECOVERY_CONTROL follows a routing control. Attributes that do not apply to the type are rejected."
+  description = "Health checks keyed by a stable identifier. type selects the shape: HTTP, HTTPS, HTTP_STR_MATCH, HTTPS_STR_MATCH, and TCP probe an endpoint (fqdn or ip_address); CALCULATED aggregates child_healthchecks; CLOUDWATCH_METRIC follows an alarm; RECOVERY_CONTROL follows a routing control. Attributes that do not apply to the type are rejected at plan time, including request_interval (default 30), failure_threshold (default 3), and measure_latency (default false), which apply to endpoint checks only. child_healthchecks takes health check IDs, not keys: a CALCULATED check cannot aggregate checks created in the same call."
   type = map(object({
     type                            = string
     fqdn                            = optional(string)
@@ -7,9 +7,9 @@ variable "health_checks" {
     port                            = optional(number)
     resource_path                   = optional(string)
     search_string                   = optional(string)
-    request_interval                = optional(number, 30)
-    failure_threshold               = optional(number, 3)
-    measure_latency                 = optional(bool, false)
+    request_interval                = optional(number)
+    failure_threshold               = optional(number)
+    measure_latency                 = optional(bool)
     invert_healthcheck              = optional(bool, false)
     disabled                        = optional(bool, false)
     enable_sni                      = optional(bool)
@@ -31,8 +31,8 @@ variable "health_checks" {
   }
 
   validation {
-    condition     = alltrue([for check in values(var.health_checks) : contains(["HTTP", "HTTPS", "HTTP_STR_MATCH", "HTTPS_STR_MATCH", "TCP"], check.type) ? (check.fqdn != null || check.ip_address != null) : (check.fqdn == null && check.ip_address == null && check.port == null && check.resource_path == null && check.search_string == null && check.regions == null && check.enable_sni == null)])
-    error_message = "Endpoint checks (HTTP, HTTPS, HTTP_STR_MATCH, HTTPS_STR_MATCH, TCP) need fqdn or ip_address; CALCULATED, CLOUDWATCH_METRIC, and RECOVERY_CONTROL checks accept none of fqdn, ip_address, port, resource_path, search_string, regions, or enable_sni."
+    condition     = alltrue([for check in values(var.health_checks) : contains(["HTTP", "HTTPS", "HTTP_STR_MATCH", "HTTPS_STR_MATCH", "TCP"], check.type) ? (check.fqdn != null || check.ip_address != null) : (check.fqdn == null && check.ip_address == null && check.port == null && check.resource_path == null && check.search_string == null && check.regions == null && check.enable_sni == null && check.request_interval == null && check.failure_threshold == null && check.measure_latency == null)])
+    error_message = "Endpoint checks (HTTP, HTTPS, HTTP_STR_MATCH, HTTPS_STR_MATCH, TCP) need fqdn or ip_address; CALCULATED, CLOUDWATCH_METRIC, and RECOVERY_CONTROL checks accept none of fqdn, ip_address, port, resource_path, search_string, regions, enable_sni, request_interval, failure_threshold, or measure_latency."
   }
 
   validation {
@@ -61,8 +61,11 @@ variable "health_checks" {
   }
 
   validation {
-    condition     = alltrue([for check in values(var.health_checks) : contains([10, 30], check.request_interval) && check.failure_threshold >= 1 && check.failure_threshold <= 10])
-    error_message = "request_interval must be 10 or 30 seconds and failure_threshold between 1 and 10."
+    condition = alltrue([for check in values(var.health_checks) :
+      (check.request_interval == null ? true : contains([10, 30], check.request_interval)) &&
+      (check.failure_threshold == null ? true : (coalesce(check.failure_threshold, 0) >= 1 && coalesce(check.failure_threshold, 0) <= 10))
+    ])
+    error_message = "request_interval must be 10 or 30 seconds (default 30) and failure_threshold between 1 and 10 (default 3)."
   }
 
   validation {
@@ -101,7 +104,7 @@ variable "health_checks" {
 }
 
 variable "tags" {
-  description = "Tags applied to every health check. Per-check tags are merged on top and the module adds Name = <key>."
+  description = "Tags applied to every health check. Per-check tags are merged on top. The module adds Name = <key> only when neither these tags nor the check's own tags set Name; it never overrides caller tags."
   type        = map(string)
   default     = {}
   nullable    = false
