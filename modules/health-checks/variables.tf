@@ -1,5 +1,5 @@
 variable "health_checks" {
-  description = "Health checks keyed by a stable identifier. type selects the shape: HTTP, HTTPS, HTTP_STR_MATCH, HTTPS_STR_MATCH, and TCP probe an endpoint (fqdn or ip_address); CALCULATED aggregates child_healthchecks; CLOUDWATCH_METRIC follows an alarm; RECOVERY_CONTROL follows a routing control. Attributes that do not apply to the type are rejected at plan time, including request_interval (default 30), failure_threshold (default 3), and measure_latency (default false), which apply to endpoint checks only."
+  description = "Health checks keyed by a stable identifier. type selects the shape: HTTP, HTTPS, HTTP_STR_MATCH, HTTPS_STR_MATCH, and TCP probe an endpoint (fqdn or ip_address); CALCULATED aggregates child_healthchecks; CLOUDWATCH_METRIC follows an alarm; RECOVERY_CONTROL follows a routing control. Attributes that do not apply to the type are rejected at plan time, including request_interval (default 30), failure_threshold (default 3), and measure_latency (default false), which apply to endpoint checks only. child_healthchecks takes health check IDs, not keys: a CALCULATED check cannot aggregate checks created in the same call."
   type = map(object({
     type                            = string
     fqdn                            = optional(string)

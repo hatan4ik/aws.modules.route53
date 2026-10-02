@@ -155,7 +155,7 @@ variable "default_ttl" {
 }
 
 variable "health_checks" {
-  description = "Health checks keyed by a stable identifier; see modules/health-checks for the per-type rules (attributes that do not apply to a type, including request_interval, failure_threshold, and measure_latency on non-endpoint checks, are rejected). Records reference them by key through health_check."
+  description = "Health checks keyed by a stable identifier; see modules/health-checks for the per-type rules (attributes that do not apply to a type, including request_interval, failure_threshold, and measure_latency on non-endpoint checks, are rejected). Records reference them by key through health_check. child_healthchecks takes health check IDs, not keys, so a CALCULATED check cannot aggregate checks created in the same call."
   type = map(object({
     type                            = string
     fqdn                            = optional(string)
