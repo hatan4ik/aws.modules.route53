@@ -106,6 +106,33 @@ Not created here
 - Two `check` blocks warn on every plan and apply but never block: `force_destroy_enabled` and `zone_created_without_dnssec`.
 - Record keys are stable identifiers: renaming a key replaces that record set only. Changing `name`, `type`, or `set_identifier` replaces the record set; changing values, TTL, weight, or health check updates it in place.
 
+## Quotas
+
+Route 53 quotas the module does not check at plan time, so exceeding one fails at apply. Defaults per account unless stated; all can be raised through Service Quotas or AWS Support. See [Route 53 quotas](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/DNSLimitations.html) for current values.
+
+| Quota | Default | Counts against it |
+| --- | --- | --- |
+| Hosted zones per account | 500 | Every module call with `zone` set, plus zones created elsewhere. |
+| Records per hosted zone | 10,000 | Every record (each value of a record set) in the zone, whoever created it. |
+| Health checks per account | 200 | Every entry of `health_checks` across all module calls, plus checks created elsewhere. |
+| VPCs associated with one private hosted zone | 300 | `zone.private.vpc_id` plus every `zone.private.additional_vpcs` entry. |
+
+## Failure modes
+
+- A health check's target disappears. If the `fqdn` stops resolving, the load balancer behind it is deleted, or the IP stops answering, the check goes unhealthy and routing fails over; when every record in a weighted, latency, or similar group is unhealthy, Route 53 answers as if all were healthy. Nothing in Terraform notices; the check keeps probing a target that no longer exists.
+- A `CLOUDWATCH_METRIC` check's alarm is deleted. Route 53 can no longer read the alarm state and reports the check according to `insufficient_data_health_status`. With `LastKnownStatus` (the AWS default when unset) the check can stay `Healthy` indefinitely; set `Unhealthy` when a missing alarm must fail closed.
+- A health check referenced by `health_check_id` is deleted outside this module. Route 53 allows deleting a health check that records still reference; AWS documents that the status of such a record's health check is then unpredictable. A `health_check` key referencing a check in the same call cannot dangle this way, because removing the check while a record still names it fails the plan.
+- DNSSEC loses its key. If the KMS key behind the key-signing key is disabled, scheduled for deletion, or loses the `dnssec-route53.amazonaws.com` grants, Route 53 cannot re-sign the zone; once existing signatures expire, validating resolvers return `SERVFAIL` for the whole zone. Route 53 reports this through the `AWS/Route53` CloudWatch metrics `DNSSECInternalFailure` and `DNSSECKeySigningKeysNeedingAction` (dimension `HostedZoneId`, published in `us-east-1`). The module creates no alarms; alarm on both metrics being greater than 0 for every signed zone.
+
+## Cost
+
+The module itself adds nothing beyond the resources it declares, but some of them carry an ongoing charge (see [Route 53 pricing](https://aws.amazon.com/route53/pricing/) and [KMS pricing](https://aws.amazon.com/kms/pricing/)):
+
+- Hosted zones are billed per zone per month, and queries per million (alias queries to AWS resources are free).
+- Health checks are billed per check per month, more for endpoints outside AWS, and each optional feature adds to that per check: HTTPS, string matching (`*_STR_MATCH`), the fast 10-second `request_interval`, and `measure_latency`. A check using all four costs several times a basic one, and the charge recurs monthly for every entry of `health_checks` until it is removed.
+- DNSSEC requires a customer managed KMS key, billed per key per month plus the `kms:Sign` requests Route 53 makes, for as long as signing is enabled. Query logging is billed as CloudWatch Logs ingestion and storage in the caller's log group.
+- The integration suites create billable resources in your account; see [tests/integration/README.md](tests/integration/README.md).
+
 ## Testing
 
 Two layers, deliberately separate:
