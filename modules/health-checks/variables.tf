@@ -101,7 +101,7 @@ variable "health_checks" {
 }
 
 variable "tags" {
-  description = "Tags applied to every health check. Per-check tags are merged on top and the module adds Name = <key>."
+  description = "Tags applied to every health check. Per-check tags are merged on top. The module adds Name = <key> only when neither these tags nor the check's own tags set Name; it never overrides caller tags."
   type        = map(string)
   default     = {}
   nullable    = false

@@ -75,7 +75,7 @@ Zone
 
 - `force_destroy = false`: destroying the module fails while the zone still holds record sets you did not declare. Turn it on only for disposable zones; the `force_destroy_enabled` check warns while it is set.
 - A private zone is created with its VPC and stays private. `delegation_set_id` is rejected on a private zone, and DNSSEC and query logging are refused on a zone the module created as private because Route 53 supports them on public zones only. An existing zone is not inspected, so those two features are your responsibility to apply to a public zone.
-- The module adds only a `Name` tag and never overrides caller tags.
+- The module adds only a `Name` tag (the zone name on the zone, the key on each health check), and only when `tags` does not already set `Name`; it never overrides caller tags. A `Name` in `tags` therefore names the zone and every health check alike; give a health check its own name through its per-check `tags`.
 
 Records
 

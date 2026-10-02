@@ -52,6 +52,29 @@ run "creates_endpoint_health_checks" {
   }
 }
 
+run "never_overrides_a_caller_supplied_name_tag" {
+  command = plan
+
+  variables {
+    tags = { Name = "module-name", Environment = "test" }
+
+    health_checks = {
+      default = { type = "HTTP", fqdn = "app.example.com" }
+      tagged  = { type = "HTTP", fqdn = "app.example.com", tags = { Name = "per-check-name" } }
+    }
+  }
+
+  assert {
+    condition     = aws_route53_health_check.this["default"].tags["Name"] == "module-name" && aws_route53_health_check.this["default"].tags["Environment"] == "test"
+    error_message = "A Name in module-level tags must win over the module's default Name = <key>."
+  }
+
+  assert {
+    condition     = aws_route53_health_check.this["tagged"].tags["Name"] == "per-check-name"
+    error_message = "A per-check Name must win over module-level tags and the default Name."
+  }
+}
+
 run "creates_calculated_cloudwatch_and_recovery_control_checks" {
   command = plan
 

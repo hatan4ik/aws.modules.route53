@@ -26,7 +26,7 @@ module "health_checks" {
 - String-match checks require `search_string` (1-255 characters); other types reject it. `enable_sni` applies to HTTPS types only.
 - `CALCULATED` checks need 1-256 `child_healthchecks` and a `child_health_threshold` between 0 and the number of children. `CLOUDWATCH_METRIC` checks need `cloudwatch_alarm_name` and `cloudwatch_alarm_region`, with `insufficient_data_health_status` one of `Healthy`, `Unhealthy`, or `LastKnownStatus`. `RECOVERY_CONTROL` checks need `routing_control_arn`. Each of these rejects every endpoint attribute, and endpoint checks reject theirs.
 - `invert_healthcheck` and `disabled` default to `false` and apply to every type.
-- Tags. `tags` apply to every check, the module adds `Name = <key>`, and each check's own `tags` are merged last so a per-check `Name` wins.
+- Tags. The module's `Name = <key>` is a default only: `tags` (applied to every check) are merged on top of it and each check's own `tags` last, so a caller-supplied `Name` always wins and a per-check `Name` wins over both.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements

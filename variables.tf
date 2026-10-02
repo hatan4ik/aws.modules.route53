@@ -73,7 +73,7 @@ variable "zone" {
 }
 
 variable "tags" {
-  description = "Tags applied to the hosted zone and every health check. The module adds a Name tag and never overrides caller tags."
+  description = "Tags applied to the hosted zone and every health check. The module adds a Name tag (the zone name, or the health check key) only when these tags do not set one; it never overrides caller tags. A Name set here therefore names the zone and every health check alike."
   type        = map(string)
   default     = {}
   nullable    = false

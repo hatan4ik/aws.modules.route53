@@ -35,5 +35,7 @@ resource "aws_route53_health_check" "this" {
 
   routing_control_arn = each.value.routing_control_arn
 
-  tags = merge(var.tags, { Name = each.key }, each.value.tags)
+  # The module's Name only fills a gap: module-level tags, then per-check tags,
+  # are merged on top of it, so a caller-supplied Name always wins.
+  tags = merge({ Name = each.key }, var.tags, each.value.tags)
 }
