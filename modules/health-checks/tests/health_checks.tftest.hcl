@@ -350,3 +350,45 @@ run "rejects_malformed_routing_control_arn" {
 
   expect_failures = [var.health_checks]
 }
+
+# request_interval, failure_threshold, and measure_latency apply to endpoint
+# checks only; on other types they are rejected rather than silently dropped.
+run "rejects_request_interval_on_calculated_check" {
+  command = plan
+
+  variables {
+    health_checks = { bad = { type = "CALCULATED", child_healthchecks = ["0123abcd-4567-89ef-0123-456789abcdef"], child_health_threshold = 1, request_interval = 30 } }
+  }
+
+  expect_failures = [var.health_checks]
+}
+
+run "rejects_failure_threshold_on_cloudwatch_check" {
+  command = plan
+
+  variables {
+    health_checks = { bad = { type = "CLOUDWATCH_METRIC", cloudwatch_alarm_name = "orders-5xx", cloudwatch_alarm_region = "us-east-1", failure_threshold = 3 } }
+  }
+
+  expect_failures = [var.health_checks]
+}
+
+run "rejects_measure_latency_on_recovery_control_check" {
+  command = plan
+
+  variables {
+    health_checks = { bad = { type = "RECOVERY_CONTROL", routing_control_arn = "arn:aws:route53-recovery-control::123456789012:controlpanel/0123456789abcdef0123456789abcdef/routingcontrol/abcdef1234567890", measure_latency = false } }
+  }
+
+  expect_failures = [var.health_checks]
+}
+
+run "rejects_unsupported_request_interval_on_non_endpoint_check" {
+  command = plan
+
+  variables {
+    health_checks = { bad = { type = "CALCULATED", child_healthchecks = ["0123abcd-4567-89ef-0123-456789abcdef"], child_health_threshold = 1, request_interval = 20 } }
+  }
+
+  expect_failures = [var.health_checks]
+}

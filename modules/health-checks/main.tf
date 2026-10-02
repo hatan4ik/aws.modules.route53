@@ -12,14 +12,17 @@ resource "aws_route53_health_check" "this" {
 
   type = each.value.type
 
-  fqdn              = each.value.fqdn
-  ip_address        = each.value.ip_address
-  port              = each.value.port
-  resource_path     = each.value.resource_path
-  search_string     = each.value.search_string
-  request_interval  = local.endpoint[each.key] ? each.value.request_interval : null
-  failure_threshold = local.endpoint[each.key] ? each.value.failure_threshold : null
-  measure_latency   = local.endpoint[each.key] ? each.value.measure_latency : null
+  fqdn          = each.value.fqdn
+  ip_address    = each.value.ip_address
+  port          = each.value.port
+  resource_path = each.value.resource_path
+  search_string = each.value.search_string
+
+  # Endpoint-only settings: the variable rejects them on other types, so the
+  # defaults (30 seconds, 3 failures, no latency) apply to endpoint checks only.
+  request_interval  = local.endpoint[each.key] ? coalesce(each.value.request_interval, 30) : null
+  failure_threshold = local.endpoint[each.key] ? coalesce(each.value.failure_threshold, 3) : null
+  measure_latency   = local.endpoint[each.key] ? coalesce(each.value.measure_latency, false) : null
   enable_sni        = each.value.enable_sni
   regions           = each.value.regions
 
