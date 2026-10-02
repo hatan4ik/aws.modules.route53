@@ -31,8 +31,8 @@ variable "zone" {
   default = null
 
   validation {
-    condition     = var.zone == null ? true : (can(regex("^([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.?$", var.zone.name)) && length(var.zone.name) <= 254)
-    error_message = "zone.name must be a lowercase DNS name (labels of 1-63 letters, digits, hyphens, or underscores, at most 253 characters), optionally ending with a dot."
+    condition     = var.zone == null ? true : (can(regex("^([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.?$", var.zone.name)) && length(trimsuffix(var.zone.name, ".")) <= 253)
+    error_message = "zone.name must be a lowercase DNS name (labels of 1-63 letters, digits, hyphens, or underscores, at most 253 characters not counting an optional trailing dot), optionally ending with a dot."
   }
 
   validation {
