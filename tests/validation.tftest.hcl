@@ -45,6 +45,43 @@ run "rejects_malformed_zone_name" {
   expect_failures = [var.zone]
 }
 
+# DNS names are at most 253 characters, not counting the optional trailing dot.
+run "accepts_a_253_character_zone_name" {
+  command = plan
+
+  variables {
+    zone = { name = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", private = { vpc_id = "vpc-0123456789abcdef0" } }
+  }
+
+  assert {
+    condition     = length(aws_route53_zone.this[0].name) == 253
+    error_message = "A 253-character zone name must be accepted."
+  }
+}
+
+run "accepts_a_253_character_zone_name_with_a_trailing_dot" {
+  command = plan
+
+  variables {
+    zone = { name = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.", private = { vpc_id = "vpc-0123456789abcdef0" } }
+  }
+
+  assert {
+    condition     = length(aws_route53_zone.this[0].name) == 254
+    error_message = "A 253-character zone name with a trailing dot must be accepted."
+  }
+}
+
+run "rejects_a_254_character_zone_name" {
+  command = plan
+
+  variables {
+    zone = { name = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", private = { vpc_id = "vpc-0123456789abcdef0" } }
+  }
+
+  expect_failures = [var.zone]
+}
+
 run "rejects_delegation_set_on_private_zone" {
   command = plan
 

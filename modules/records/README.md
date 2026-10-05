@@ -6,7 +6,7 @@ Owns record sets in one hosted zone: every routing policy Route 53 supports, ali
 
 ```hcl
 module "records" {
-  source = "git::https://github.com/hatan4ik/aws.modules.route53.git//modules/records?ref=<commit-sha>" # v1.0.0
+  source = "git::https://github.com/hatan4ik/aws.modules.route53.git//modules/records?ref=<commit-sha>" # v1.0.1
 
   zone_id = "Z0123456789ABCDEFGHIJ"
 

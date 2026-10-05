@@ -31,8 +31,8 @@ variable "zone" {
   default = null
 
   validation {
-    condition     = var.zone == null ? true : (can(regex("^([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.?$", var.zone.name)) && length(var.zone.name) <= 254)
-    error_message = "zone.name must be a lowercase DNS name (labels of 1-63 letters, digits, hyphens, or underscores, at most 253 characters), optionally ending with a dot."
+    condition     = var.zone == null ? true : (can(regex("^([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.?$", var.zone.name)) && length(trimsuffix(var.zone.name, ".")) <= 253)
+    error_message = "zone.name must be a lowercase DNS name (labels of 1-63 letters, digits, hyphens, or underscores, at most 253 characters not counting an optional trailing dot), optionally ending with a dot."
   }
 
   validation {
@@ -73,7 +73,7 @@ variable "zone" {
 }
 
 variable "tags" {
-  description = "Tags applied to the hosted zone and every health check. The module adds a Name tag and never overrides caller tags."
+  description = "Tags applied to the hosted zone and every health check. The module adds a Name tag (the zone name, or the health check key) only when these tags do not set one; it never overrides caller tags. A Name set here therefore names the zone and every health check alike."
   type        = map(string)
   default     = {}
   nullable    = false
@@ -155,7 +155,7 @@ variable "default_ttl" {
 }
 
 variable "health_checks" {
-  description = "Health checks keyed by a stable identifier; see modules/health-checks for the per-type rules. Records reference them by key through health_check."
+  description = "Health checks keyed by a stable identifier; see modules/health-checks for the per-type rules (attributes that do not apply to a type, including request_interval, failure_threshold, and measure_latency on non-endpoint checks, are rejected). Records reference them by key through health_check. child_healthchecks takes health check IDs, not keys, so a CALCULATED check cannot aggregate checks created in the same call."
   type = map(object({
     type                            = string
     fqdn                            = optional(string)
@@ -163,9 +163,9 @@ variable "health_checks" {
     port                            = optional(number)
     resource_path                   = optional(string)
     search_string                   = optional(string)
-    request_interval                = optional(number, 30)
-    failure_threshold               = optional(number, 3)
-    measure_latency                 = optional(bool, false)
+    request_interval                = optional(number)
+    failure_threshold               = optional(number)
+    measure_latency                 = optional(bool)
     invert_healthcheck              = optional(bool, false)
     disabled                        = optional(bool, false)
     enable_sni                      = optional(bool)

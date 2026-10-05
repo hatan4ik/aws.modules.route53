@@ -152,8 +152,30 @@ Outputs: `zone_id`, `zone_arn`, `name`, `name_servers`, `primary_name_server`,
   rule, and both advisory checks.
 - Every example is initialised and validated in CI; examples are the
   documentation's executable form.
+- `tests/interface_parity.tftest.hcl` guards the schemas HCL forces the root
+  to duplicate (the record type in `variables.tf`, `locals.tf`, and
+  `modules/records`; the health-check type in `variables.tf` and
+  `modules/health-checks`): each copy is checked against one pinned field
+  list, and a fixture setting every field must survive `locals.tf`
+  unchanged.
 - Static policy: `tflint` with the AWS ruleset, Checkov, Trivy; generated
   docs are checked for drift.
+
+## Operational limits, failure modes, and cost
+
+Route 53 account and zone quotas (500 hosted zones and 200 health checks
+per account, 10,000 records per zone, 300 VPCs per private zone, all
+adjustable defaults) are not checked at plan time; exceeding one fails at
+apply. Health checks fail open or closed depending on what disappears (a
+probed target, a CloudWatch alarm, an externally referenced
+`health_check_id`, which Route 53 lets you delete while records still use
+it), and a signed zone whose KMS key becomes unusable surfaces only through
+the `DNSSECInternalFailure` and `DNSSECKeySigningKeysNeedingAction`
+CloudWatch metrics. Health checks carry a per-check monthly charge that
+rises with HTTPS, string matching, the 10-second interval, and latency
+measurement, and DNSSEC carries an ongoing KMS key charge. The README's
+Quotas, Failure modes, and Cost sections give the details; the module
+creates no alarms and leaves monitoring to the caller.
 
 ## Compatibility
 
@@ -163,6 +185,23 @@ Outputs: `zone_id`, `zone_arn`, `name`, `name_servers`, `primary_name_server`,
   association from the VPC account), Route 53 Resolver, traffic policies,
   and CIDR collections are out of scope; the module accepts the identifiers
   they produce (`cidr.collection_id`) where a record needs one.
+
+## Deferred to v2
+
+- **Standalone publication of `modules/records`.** v1.0.0 shipped
+  `modules/records` and `modules/health-checks` as public, independently
+  sourceable modules. No consumer uses either standalone, and the root's
+  `zone_id` mode already covers the use case `modules/records` was
+  published for (managing record sets in a zone created elsewhere). Both are
+  frozen for the v1 line: they keep their interfaces and receive fixes, but
+  are not extended beyond what the root needs. Whether `modules/records`
+  stays a published interface, or becomes an internal implementation detail
+  of the root, is to be reconsidered for v2.
+- **Calculated health checks over sibling checks.** `child_healthchecks`
+  takes IDs only, because resolving keys within one
+  `aws_route53_health_check` resource would be a self-reference. Supporting
+  keys would need a second resource for `CALCULATED` checks, which changes
+  state addresses; it is deferred to v2.
 
 ## Migration
 

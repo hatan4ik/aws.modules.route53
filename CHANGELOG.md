@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-02
+
+Patch release fixing documented contracts the v1.0.0 code did not honour. No input, output, or state address changes. Read the first two entries under Fixed before upgrading: each one changes behaviour for some existing configurations.
+
+### Fixed
+
+- **Behaviour change: a caller-supplied `Name` tag is now respected.** The documented contract was that the module "never overrides caller tags", but the zone merged its own `Name = <zone name>` after `tags`, and health checks merged `Name = <key>` after module-level `tags`, so a caller's `Name` was silently replaced. The module's `Name` is now only a default. If you pass `Name` in `tags`, expect an in-place tag update on the zone and on every health check, which will now carry your `Name`. Give a health check its own `Name` through its per-check `tags`. Configurations without `Name` in `tags` see no change.
+- **Behaviour change: endpoint-only health-check settings are rejected on other types.** The documentation said attributes that do not apply to a check type are rejected, but `request_interval`, `failure_threshold`, and `measure_latency` were silently ignored on `CALCULATED`, `CLOUDWATCH_METRIC`, and `RECOVERY_CONTROL` checks (and `request_interval` was still validated for them). Setting any of the three on one of those types now fails at plan. They never had any effect there, so remove them. Their defaults (30, 3, `false`) still apply to endpoint checks and rendered values are unchanged for every check.
+- `zone.name` validation allowed 254 characters while its message said 253, so a 254-character name passed plan and failed at apply. The limit is now 253 characters, not counting an optional trailing dot, and the message matches the check.
+
+### Added
+
+- `tests/interface_parity.tftest.hcl`, which fails when the record or health-check schema duplicated between the root and its submodules drifts, or when `locals.tf` stops forwarding a record field unchanged.
+
+### Changed
+
+- Documentation: `child_healthchecks` takes health check IDs, not keys, so a `CALCULATED` check cannot aggregate checks created in the same call. The docs now explain why (a self-reference) and the two-call workaround.
+- Documentation: README sections on Route 53 quotas, failure modes (deleted targets, alarms, and externally referenced health checks; DNSSEC key loss and the `DNSSECInternalFailure` and `DNSSECKeySigningKeysNeedingAction` metrics), and the ongoing cost of health checks and DNSSEC.
+- Documentation: `docs/DESIGN.md` gains a Deferred to v2 section: the standalone submodules are frozen for v1, and standalone publication of `modules/records` is to be reconsidered for v2.
+
 ## [1.0.0] - 2026-09-24
 
 Breaking release. One module call now manages one hosted zone, created or existing, with typed record sets, health checks, DNSSEC, and query logging. [docs/UPGRADE-1.0.md](docs/UPGRADE-1.0.md) maps every 0.1.x input to its replacement, explains the one behavioural change (`allow_overwrite`), and gives ready-to-paste `moved` blocks.
@@ -64,7 +84,8 @@ Breaking release. One module call now manages one hosted zone, created or existi
 
 - Versioned module creating a public hosted zone (`create_zone` and `zone_name`) or managing simple and alias record sets in an existing zone (`zone_id`), with `force_destroy`, and `zone_id`, `name_servers`, and `record_fqdns` outputs.
 
-[Unreleased]: https://github.com/hatan4ik/aws.modules.route53/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/hatan4ik/aws.modules.route53/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/hatan4ik/aws.modules.route53/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/hatan4ik/aws.modules.route53/compare/v0.1.2...v1.0.0
 [0.1.2]: https://github.com/hatan4ik/aws.modules.route53/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/hatan4ik/aws.modules.route53/compare/v0.1.0...v0.1.1
